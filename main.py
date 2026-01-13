@@ -244,6 +244,9 @@ class GameWindow(arcade.Window):
     def __init__(self):
         super().__init__(SCREEN_WIDTH, SCREEN_HEIGHT, SCREEN_TITLE)
         arcade.set_background_color((15, 15, 15))
+        self.flash_timer = 0
+        self.shake = 0
+        self.blood_splats = []
 
         self.player: Player = None
         self.player_list = arcade.SpriteList()
@@ -283,10 +286,16 @@ class GameWindow(arcade.Window):
                                       arcade.color.RED, 36, anchor_x="center", font_name="Kenney Future")
         self.dead_sub = arcade.Text("PRESS R TO RESTART", SCREEN_WIDTH // 2, SCREEN_HEIGHT // 2 - 30,
                                     arcade.color.WHITE, 24, anchor_x="center", font_name="Kenney Future")
+        self.last_update_time = time.time()
+
+        self.shake = 0  # тряска экрана
+        self.flash_timer = 0  # вспышка при выстреле
 
         self.setup()
     def on_update(self, delta_time: float):
         self.update(delta_time)  # вызываем твой update каждый кадр
+        if self.flash_timer > 0:
+            self.flash_timer -= delta_time
 
     def make_map(self):
         grid = [[0 for _ in range(MAP_W)] for __ in range(MAP_H)]
@@ -395,7 +404,48 @@ class GameWindow(arcade.Window):
         self.last_update_time = time.time()
 
     def on_draw(self):
-        self.clear()
+        self.clear((18, 10, 30))  # тёмно-фиолетовый
+
+        # камера-тряска
+        sx = random.randint(-self.shake, self.shake)
+        sy = random.randint(-self.shake, self.shake)
+        self.shake = max(0, self.shake - 1)
+        # тень
+        arcade.draw_circle_filled(
+            self.player.center_x + sx + 4,
+            self.player.center_y + sy - 4,
+            14,
+            (0, 0, 0, 120)
+        )
+
+        # тело
+        arcade.draw_circle_filled(
+            self.player.center_x + sx,
+            self.player.center_y + sy,
+            12,
+            (255, 240, 0)
+        )
+        for enemy in self.enemy_list:
+            if not enemy.alive:
+                arcade.draw_circle_filled(
+                    enemy.center_x + sx,
+                    enemy.center_y + sy,
+                    16,
+                    (140, 0, 0)
+                )
+            else:
+                arcade.draw_circle_filled(
+                    enemy.center_x + sx + 4,
+                    enemy.center_y + sy - 4,
+                    14,
+                    (0, 0, 0, 120)
+                )
+                arcade.draw_circle_filled(
+                    enemy.center_x + sx,
+                    enemy.center_y + sy,
+                    12,
+                    (255, 60, 60)
+                )
 
         # --- Тряска экрана (если есть) ---
         shake_x = random.uniform(-getattr(self, "screen_shake", 0), getattr(self, "screen_shake", 0)) if getattr(self,
@@ -464,7 +514,7 @@ class GameWindow(arcade.Window):
         if self.paused:
             left, right = SCREEN_WIDTH // 2 - 200, SCREEN_WIDTH // 2 + 200
             bottom, top = SCREEN_HEIGHT // 2 - 50, SCREEN_HEIGHT // 2 + 50
-            arcade.draw_lrbt_rectangle_filled(left, right, top, bottom, (0, 0, 0, 200))
+            arcade.draw_lrbt_rectangle_filled(left, right, bottom, top, (0, 0, 0, 120))
             self.paused_text.x = SCREEN_WIDTH // 2 + hud_x
             self.paused_text.y = SCREEN_HEIGHT // 2 + hud_y
             self.paused_text.draw()
@@ -473,13 +523,22 @@ class GameWindow(arcade.Window):
         if not self.player.alive:
             left, right = SCREEN_WIDTH // 2 - 250, SCREEN_WIDTH // 2 + 250
             bottom, top = SCREEN_HEIGHT // 2 - 75, SCREEN_HEIGHT // 2 + 75
-            arcade.draw_lrbt_rectangle_filled(left, right, top, bottom, (0, 0, 0, 120))
+            arcade.draw_lrbt_rectangle_filled(left, right, bottom, top, (0, 0, 0, 120))
             self.dead_title.x = SCREEN_WIDTH // 2 + hud_x
             self.dead_title.y = SCREEN_HEIGHT // 2 + 30 + hud_y
             self.dead_title.draw()
             self.dead_sub.x = SCREEN_WIDTH // 2 + hud_x
             self.dead_sub.y = SCREEN_HEIGHT // 2 - 30 + hud_y
             self.dead_sub.draw()
+
+        if self.flash_timer > 0:
+            arcade.draw_rectangle_filled(
+                SCREEN_WIDTH // 2,
+                SCREEN_HEIGHT // 2,
+                SCREEN_WIDTH,
+                SCREEN_HEIGHT,
+                (255, 255, 255, 90)
+            )
 
     def on_key_press(self, key, modifiers):
         if key in self.keys_pressed:
@@ -675,21 +734,17 @@ class GameWindow(arcade.Window):
         # --- AI врагов ---
         for enemy in self.enemy_list:
             action = enemy.update_ai(self.player, self.wall_list, delta_time)
-            if action == 'attack' and self.player.alive:
-                self.player.health -= 20
-                spawn_blood(self.particle_list, self.player.center_x, self.player.center_y)
-                for _ in range(5):
-                    px = Particle(2, (255, 50, 50),
-                                  random.uniform(-3, 3),
-                                  random.uniform(-3, 3),
-                                  life=random.randint(10, 20))
-                    px.center_x = self.player.center_x
-                    px.center_y = self.player.center_y
-                    self.particle_list.append(px)
-                if self.player.health <= 0:
+            if action == 'attack':
+                if ONE_HIT_PLAYER:
                     self.player.kill_actor()
                     self.message = 'YOU DIED - PRESS R TO RESTART'
                     return
+                else:
+                    self.player.health -= 20
+                    if self.player.health <= 0:
+                        self.player.kill_actor()
+                        self.message = 'YOU DIED - PRESS R TO RESTART'
+                        return
 
         # --- Движение игрока ---
         move_x = move_y = 0
@@ -756,6 +811,7 @@ def spawn_blood(particle_list, x, y):
         p.center_x = x + random.uniform(-5, 5)
         p.center_y = y + random.uniform(-5, 5)
         particle_list.append(p)
+
 
 
 if __name__ == '__main__':
