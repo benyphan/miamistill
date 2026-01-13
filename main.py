@@ -86,20 +86,21 @@ class Bullet(arcade.SpriteCircle):
         self.center_y += self.vy * delta_time
 
 
-class Particle(arcade.Sprite):
+class Particle(arcade.SpriteCircle):
     def __init__(self, size, color, dx, dy, life):
-        super().__init__()
+        super().__init__(size, color)
         self.dx = dx
         self.dy = dy
         self.life = life
-        # возможно еще center_x, center_y и sprite image
 
-    def update(self, delta_time: float = 0):  # <- важно добавить delta_time!
+    def update(self, delta_time: float = 0):
         self.center_x += self.dx
         self.center_y += self.dy
         self.life -= 1
         if self.life <= 0:
             self.kill()
+
+
 
 
 
@@ -264,6 +265,24 @@ class GameWindow(arcade.Window):
         self.message = ''
         self.paused = False
         self.last_update_time = time.time()
+        # --- HUD Text objects (создаём один раз) ---
+        self.hud_message = arcade.Text("", 20, SCREEN_HEIGHT - 40, arcade.color.WHITE, 16, font_name="Kenney Future")
+        self.hud_enemies = arcade.Text("", 20, SCREEN_HEIGHT - 70, arcade.color.RED, 14, font_name="Kenney Future")
+        self.hud_weapon = arcade.Text("", 20, SCREEN_HEIGHT - 100, arcade.color.WHITE, 14, font_name="Kenney Future")
+        self.hud_health = arcade.Text("", 20, SCREEN_HEIGHT - 130, arcade.color.GREEN, 14, font_name="Kenney Future")
+        self.hud_controls = arcade.Text(
+            "WASD: MOVE  MOUSE: AIM  LMB: SHOOT  SPACE: MELEE  1/2: WEAPON  R: RESTART",
+            20, 20, arcade.color.LIGHT_GRAY, 12, font_name="Kenney Future"
+        )
+
+        # Центрированные тексты для паузы и смерти
+        self.paused_text = arcade.Text("PAUSED", SCREEN_WIDTH // 2, SCREEN_HEIGHT // 2,
+                                       arcade.color.YELLOW, 36, anchor_x="center", anchor_y="center",
+                                       font_name="Kenney Future")
+        self.dead_title = arcade.Text("YOU DIED", SCREEN_WIDTH // 2, SCREEN_HEIGHT // 2 + 30,
+                                      arcade.color.RED, 36, anchor_x="center", font_name="Kenney Future")
+        self.dead_sub = arcade.Text("PRESS R TO RESTART", SCREEN_WIDTH // 2, SCREEN_HEIGHT // 2 - 30,
+                                    arcade.color.WHITE, 24, anchor_x="center", font_name="Kenney Future")
 
         self.setup()
     def on_update(self, delta_time: float):
@@ -378,83 +397,89 @@ class GameWindow(arcade.Window):
     def on_draw(self):
         self.clear()
 
-        # Рисуем в порядке: стены, пули, враги, игрок, частицы
-        self.wall_list.draw()
-        self.bullet_list.draw()
-        self.enemy_list.draw()
-        self.player_list.draw()
-        self.particle_list.draw()
+        # --- Тряска экрана (если есть) ---
+        shake_x = random.uniform(-getattr(self, "screen_shake", 0), getattr(self, "screen_shake", 0)) if getattr(self,
+                                                                                                                 "screen_shake",
+                                                                                                                 0) > 0 else 0
+        shake_y = random.uniform(-getattr(self, "screen_shake", 0), getattr(self, "screen_shake", 0)) if getattr(self,
+                                                                                                                 "screen_shake",
+                                                                                                                 0) > 0 else 0
 
-        # HUD
-        arcade.draw_text(
-            self.message, 20, SCREEN_HEIGHT - 40,
-            arcade.color.WHITE, 16
-        )
+        # --- Рисуем спрайты ---
+        for sl in (self.wall_list, self.bullet_list, self.enemy_list, self.player_list, self.particle_list):
+            for spr in sl:
+                spr.center_x += shake_x
+                spr.center_y += shake_y
+            sl.draw()
+            for spr in sl:
+                spr.center_x -= shake_x
+                spr.center_y -= shake_y
 
-        alive_enemies = len(self.enemy_list)
-        arcade.draw_text(
-            f'ENEMIES: {alive_enemies}', 20, SCREEN_HEIGHT - 70,
-            arcade.color.RED, 14
-        )
+        # --- Вспышка экрана ---
+        if getattr(self, "flash_alpha", 0) > 0:
+            arcade.draw_lrtb_rectangle_filled(0, SCREEN_WIDTH, SCREEN_HEIGHT, 0,
+                                              (self.flash_color[0], self.flash_color[1], self.flash_color[2],
+                                               int(self.flash_alpha)))
 
-        # Оружие и боезапас
+        # --- HUD ---
+        hud_x, hud_y = shake_x, shake_y  # сдвиг HUD вместе с экраном (опционально)
+
+        self.hud_message.text = self.message
+        self.hud_message.x = 20 + hud_x
+        self.hud_message.y = SCREEN_HEIGHT - 40 + hud_y
+        self.hud_message.draw()
+
+        self.hud_enemies.text = f'ENEMIES: {len(self.enemy_list)}'
+        self.hud_enemies.x = 20 + hud_x
+        self.hud_enemies.y = SCREEN_HEIGHT - 70 + hud_y
+        self.hud_enemies.draw()
+
         w = self.player.weapon.upper()
         ammo = self.player.ammo.get(self.player.weapon, 0)
         maxa = self.player.max_ammo.get(self.player.weapon, 0)
         reload_status = ' [RELOADING]' if self.player.reloading else ''
-        arcade.draw_text(
-            f'{w}: {ammo}/{maxa}{reload_status}', 20, SCREEN_HEIGHT - 100,
-            arcade.color.WHITE, 14
-        )
+        self.hud_weapon.text = f'{w}: {ammo}/{maxa}{reload_status}'
+        self.hud_weapon.x = 20 + hud_x
+        self.hud_weapon.y = SCREEN_HEIGHT - 100 + hud_y
+        self.hud_weapon.draw()
 
-        # Здоровье игрока
-        health_color = arcade.color.GREEN if self.player.health > 50 else \
-            arcade.color.YELLOW if self.player.health > 25 else \
-                arcade.color.RED
-        arcade.draw_text(
-            f'HEALTH: {self.player.health}', 20, SCREEN_HEIGHT - 130,
-            health_color, 14
-        )
+        # Цвет здоровья
+        if self.player.health > 50:
+            hc = arcade.color.GREEN
+        elif self.player.health > 25:
+            hc = arcade.color.YELLOW
+        else:
+            hc = arcade.color.RED
+        self.hud_health.text = f'HEALTH: {self.player.health}'
+        self.hud_health.color = hc
+        self.hud_health.x = 20 + hud_x
+        self.hud_health.y = SCREEN_HEIGHT - 130 + hud_y
+        self.hud_health.draw()
 
-        # Управление
-        arcade.draw_text(
-            'WASD: MOVE  MOUSE: AIM  LMB: SHOOT  SPACE: MELEE  1/2: WEAPON  R: RESTART',
-            20, 20, arcade.color.LIGHT_GRAY, 12
-        )
+        self.hud_controls.x = 20 + hud_x
+        self.hud_controls.y = 20 + hud_y
+        self.hud_controls.draw()
 
-        # Пауза
+        # --- Пауза ---
         if self.paused:
-            arcade.draw_rectangle_filled(
-                SCREEN_WIDTH // 2, SCREEN_HEIGHT // 2,
-                400, 100,
-                arcade.make_transparent_color(arcade.color.BLACK, 200)
-            )
-            arcade.draw_text(
-                'PAUSED',
-                SCREEN_WIDTH // 2, SCREEN_HEIGHT // 2,
-                arcade.color.YELLOW, 36,
-                anchor_x="center", anchor_y="center"
-            )
+            left, right = SCREEN_WIDTH // 2 - 200, SCREEN_WIDTH // 2 + 200
+            bottom, top = SCREEN_HEIGHT // 2 - 50, SCREEN_HEIGHT // 2 + 50
+            arcade.draw_lrbt_rectangle_filled(left, right, top, bottom, (0, 0, 0, 200))
+            self.paused_text.x = SCREEN_WIDTH // 2 + hud_x
+            self.paused_text.y = SCREEN_HEIGHT // 2 + hud_y
+            self.paused_text.draw()
 
-        # Смерть игрока
+        # --- Смерть игрока ---
         if not self.player.alive:
-            arcade.draw_rectangle_filled(
-                SCREEN_WIDTH // 2, SCREEN_HEIGHT // 2,
-                500, 150,
-                arcade.make_transparent_color(arcade.color.BLACK, 200)
-            )
-            arcade.draw_text(
-                'YOU DIED',
-                SCREEN_WIDTH // 2, SCREEN_HEIGHT // 2 + 30,
-                arcade.color.RED, 36,
-                anchor_x="center"
-            )
-            arcade.draw_text(
-                'PRESS R TO RESTART',
-                SCREEN_WIDTH // 2, SCREEN_HEIGHT // 2 - 30,
-                arcade.color.WHITE, 24,
-                anchor_x="center"
-            )
+            left, right = SCREEN_WIDTH // 2 - 250, SCREEN_WIDTH // 2 + 250
+            bottom, top = SCREEN_HEIGHT // 2 - 75, SCREEN_HEIGHT // 2 + 75
+            arcade.draw_lrbt_rectangle_filled(left, right, top, bottom, (0, 0, 0, 120))
+            self.dead_title.x = SCREEN_WIDTH // 2 + hud_x
+            self.dead_title.y = SCREEN_HEIGHT // 2 + 30 + hud_y
+            self.dead_title.draw()
+            self.dead_sub.x = SCREEN_WIDTH // 2 + hud_x
+            self.dead_sub.y = SCREEN_HEIGHT // 2 - 30 + hud_y
+            self.dead_sub.draw()
 
     def on_key_press(self, key, modifiers):
         if key in self.keys_pressed:
@@ -478,21 +503,23 @@ class GameWindow(arcade.Window):
             self.keys_pressed[key] = False
 
     def on_mouse_motion(self, x, y, dx, dy):
+        if not self.player or not self.player.alive:
+            return
         self.mouse_x = x
         self.mouse_y = y
-        if self.player and self.player.alive:
-            dx = x - self.player.center_x
-            dy = y - self.player.center_y
-            if dx != 0 or dy != 0:
-                self.player.angle = math.degrees(math.atan2(dy, dx))
+        dx = x - self.player.center_x
+        dy = y - self.player.center_y
+        if dx != 0 or dy != 0:
+            self.player.angle = math.degrees(math.atan2(dy, dx))
 
     def on_mouse_press(self, x, y, button, modifiers):
         if button == arcade.MOUSE_BUTTON_LEFT:
             self.shoot()
 
     def shoot(self):
-        if self.paused or not self.player.alive or self.player.reloading:
+        if not self.player or not self.player.alive or self.paused or self.player.reloading:
             return
+        # остальной код без изменений
 
         current_time = time.time()
         weapon = self.player.weapon
@@ -564,8 +591,9 @@ class GameWindow(arcade.Window):
                 self.particle_list.append(px)
 
     def do_melee(self):
-        if self.paused or not self.player.alive:
+        if not self.player or not self.player.alive or self.paused:
             return
+        # остальной код без изменений
 
         current_time = time.time()
         if current_time - self.player.last_melee < MELEE_COOLDOWN:
@@ -592,29 +620,30 @@ class GameWindow(arcade.Window):
         if to_kill:
             self.message = f'MELEE KILL - {len(to_kill)} ENEMIES'
 
+# ---------------- Основной апдейт
     def update(self, delta_time):
         if self.paused:
+            # Обновляем только частицы и пули
+            self.particle_list.update()
+            self.bullet_list.update()
+            return
+
+        # Если игрок мертв, не двигаем его и не даём стрелять
+        if not self.player or not self.player.alive:
+            self.particle_list.update()
+            self.bullet_list.update()
+            # Проверяем победу на уровне (если нужно)
+            if len(self.enemy_list) == 0:
+                self.level += 1
+                self.setup()
             return
 
         current_time = time.time()
 
-        if not self.player.alive:
-            return
-
-        # Перезарядка
-        if self.player.reloading:
-            if current_time - self.player.reload_timer > self.player.reload_time[self.player.weapon]:
-                w = self.player.weapon
-                self.player.ammo[w] = self.player.max_ammo[w]
-                self.player.reloading = False
-
-        # Обновление пуль
+        # --- Обновление пуль ---
         for bullet in self.bullet_list:
             bullet.update(delta_time)
-
-            # Проверка столкновений со стенами
             if arcade.check_for_collision_with_list(bullet, self.wall_list):
-                # Эффект попадания в стену
                 for _ in range(2):
                     px = Particle(1, (200, 200, 200),
                                   random.uniform(-2, 2),
@@ -626,7 +655,6 @@ class GameWindow(arcade.Window):
                 bullet.kill()
                 continue
 
-            # Проверка попадания во врагов
             enemies_hit = arcade.check_for_collision_with_list(bullet, self.enemy_list)
             if enemies_hit:
                 for enemy in enemies_hit:
@@ -635,104 +663,84 @@ class GameWindow(arcade.Window):
                 bullet.kill()
                 continue
 
-        # Обновление частиц
         self.particle_list.update()
 
-        # AI врагов - они ДОЛЖНЫ атаковать!
+        # --- Перезарядка оружия ---
+        if self.player.reloading:
+            w = self.player.weapon
+            if current_time - self.player.reload_timer > self.player.reload_time[w]:
+                self.player.ammo[w] = self.player.max_ammo[w]
+                self.player.reloading = False
+
+        # --- AI врагов ---
         for enemy in self.enemy_list:
             action = enemy.update_ai(self.player, self.wall_list, delta_time)
-            if action == 'attack':
-                if self.player.health > 0:
-                    self.player.health -= 20
-                    spawn_blood(self.particle_list, self.player.center_x, self.player.center_y)
+            if action == 'attack' and self.player.alive:
+                self.player.health -= 20
+                spawn_blood(self.particle_list, self.player.center_x, self.player.center_y)
+                for _ in range(5):
+                    px = Particle(2, (255, 50, 50),
+                                  random.uniform(-3, 3),
+                                  random.uniform(-3, 3),
+                                  life=random.randint(10, 20))
+                    px.center_x = self.player.center_x
+                    px.center_y = self.player.center_y
+                    self.particle_list.append(px)
+                if self.player.health <= 0:
+                    self.player.kill_actor()
+                    self.message = 'YOU DIED - PRESS R TO RESTART'
+                    return
 
-
-
-
-
-
-
-                    # Эффект получения урона
-                    for _ in range(5):
-                        px = Particle(2, (255, 50, 50),
-                                      random.uniform(-3, 3),
-                                      random.uniform(-3, 3),
-                                      life=random.randint(10, 20))
-                        px.center_x = self.player.center_x
-                        px.center_y = self.player.center_y
-                        self.particle_list.append(px)
-
-                    if self.player.health <= 0:
-                        self.player.kill_actor()
-                        self.message = 'YOU DIED - PRESS R TO RESTART'
-                        return
-
-        # ДВИЖЕНИЕ ИГРОКА - теперь точно работает!
-        move_x = 0
-        move_y = 0
-
-        if self.keys_pressed[arcade.key.W]:
-            move_y += 1
-        if self.keys_pressed[arcade.key.S]:
-            move_y -= 1
-        if self.keys_pressed[arcade.key.A]:
-            move_x -= 1
-        if self.keys_pressed[arcade.key.D]:
-            move_x += 1
+        # --- Движение игрока ---
+        move_x = move_y = 0
+        if self.keys_pressed[arcade.key.W]: move_y += 1
+        if self.keys_pressed[arcade.key.S]: move_y -= 1
+        if self.keys_pressed[arcade.key.A]: move_x -= 1
+        if self.keys_pressed[arcade.key.D]: move_x += 1
 
         if move_x != 0 or move_y != 0:
-            # Нормализуем диагональное движение
             if move_x != 0 and move_y != 0:
                 move_x *= 0.7071
                 move_y *= 0.7071
-
-            # Вычисляем смещение
             move_x *= self.player.speed * delta_time
             move_y *= self.player.speed * delta_time
 
-            # Сохраняем старую позицию
-            old_x = self.player.center_x
-            old_y = self.player.center_y
-
-            # Двигаем по X
+            old_x, old_y = self.player.center_x, self.player.center_y
             self.player.center_x += move_x
             if arcade.check_for_collision_with_list(self.player, self.wall_list):
                 self.player.center_x = old_x
-
-            # Двигаем по Y
             self.player.center_y += move_y
             if arcade.check_for_collision_with_list(self.player, self.wall_list):
                 self.player.center_y = old_y
 
-            # След от движения
             if current_time - self.last_update_time > 0.05:
                 for _ in range(2):
-                    px = Particle(1, (100, 100, 100),
-                                  0, 0,
-                                  life=random.randint(15, 25))
+                    px = Particle(1, (100, 100, 100), 0, 0, life=random.randint(15, 25))
                     px.center_x = old_x + random.uniform(-5, 5)
                     px.center_y = old_y + random.uniform(-5, 5)
                     self.particle_list.append(px)
                 self.last_update_time = current_time
 
-        # Проверка победы
+        # --- Победа на уровне ---
         if len(self.enemy_list) == 0:
-            self.level += 1
-            self.message = f'LEVEL {self.level} CLEARED! GET READY...'
-            # Эффект победы
-            for _ in range(20):
-                px = Particle(random.randint(2, 4),
-                              (random.randint(200, 255), random.randint(200, 255), 50),
-                              random.uniform(-10, 10),
-                              random.uniform(-10, 10),
-                              life=random.randint(20, 40))
-                px.center_x = self.player.center_x
-                px.center_y = self.player.center_y
-                self.particle_list.append(px)
+            if not getattr(self, 'level_cleared', False):
+                self.level_cleared = True
+                self.level_cleared_time = current_time
+                self.message = f'LEVEL {self.level} CLEARED! GET READY...'
+                for _ in range(20):
+                    px = Particle(random.randint(2, 4),
+                                  (random.randint(200, 255), random.randint(200, 255), 50),
+                                  random.uniform(-10, 10),
+                                  random.uniform(-10, 10),
+                                  life=random.randint(20, 40))
+                    px.center_x = self.player.center_x
+                    px.center_y = self.player.center_y
+                    self.particle_list.append(px)
 
-            # Небольшая пауза перед следующим уровнем
-            time.sleep(1.5)
-            self.setup()
+            elif current_time - self.level_cleared_time > 1.5:
+                self.level_cleared = False
+                self.level += 1
+                self.setup()
 
 
 def spawn_blood(particle_list, x, y):
