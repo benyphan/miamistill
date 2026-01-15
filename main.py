@@ -104,22 +104,30 @@ class Particle(arcade.SpriteCircle):
 
 
 
-class Actor(arcade.SpriteCircle):
-    def __init__(self, size, color):
-        super().__init__(size, color)
+class Actor(arcade.Sprite):
+    def __init__(self, size=20, color=(255, 255, 255)):
+        super().__init__()
+        self.texture = arcade.make_circle_texture(size*2, color)
+        self.width = size * 2
+        self.height = size * 2
         self.alive = True
+
 
     def kill_actor(self):
         self.alive = False
         self.kill()
 
 
-class Player(Actor):
+
+class Player(arcade.Sprite):
     def __init__(self, x, y):
-        super().__init__(PLAYER_SIZE, (60, 200, 255))
+        super().__init__("assets/player.png", scale=0.6)
         self.center_x = x
         self.center_y = y
+        self.alive = True
         self.speed = PLAYER_SPEED
+        self.width = 40  # примерно визуальный размер
+        self.height = 40
         self.angle = 0
         self.last_fire = 0
         self.last_melee = 0
@@ -130,8 +138,12 @@ class Player(Actor):
         self.reload_timer = 0
         self.reload_time = {'pistol': 1.5, 'shotgun': 2.1}
         self.health = 100
-        self.width -= 6
-        self.height -= 6
+
+        def kill_actor(self):
+            self.alive = False
+            # чтобы спрайт исчезал со сцены
+            self.kill()
+
 
 
 class Enemy(Actor):
@@ -410,42 +422,7 @@ class GameWindow(arcade.Window):
         sx = random.randint(-self.shake, self.shake)
         sy = random.randint(-self.shake, self.shake)
         self.shake = max(0, self.shake - 1)
-        # тень
-        arcade.draw_circle_filled(
-            self.player.center_x + sx + 4,
-            self.player.center_y + sy - 4,
-            14,
-            (0, 0, 0, 120)
-        )
 
-        # тело
-        arcade.draw_circle_filled(
-            self.player.center_x + sx,
-            self.player.center_y + sy,
-            12,
-            (255, 240, 0)
-        )
-        for enemy in self.enemy_list:
-            if not enemy.alive:
-                arcade.draw_circle_filled(
-                    enemy.center_x + sx,
-                    enemy.center_y + sy,
-                    16,
-                    (140, 0, 0)
-                )
-            else:
-                arcade.draw_circle_filled(
-                    enemy.center_x + sx + 4,
-                    enemy.center_y + sy - 4,
-                    14,
-                    (0, 0, 0, 120)
-                )
-                arcade.draw_circle_filled(
-                    enemy.center_x + sx,
-                    enemy.center_y + sy,
-                    12,
-                    (255, 60, 60)
-                )
 
         # --- Тряска экрана (если есть) ---
         shake_x = random.uniform(-getattr(self, "screen_shake", 0), getattr(self, "screen_shake", 0)) if getattr(self,
@@ -571,6 +548,7 @@ class GameWindow(arcade.Window):
         if dx != 0 or dy != 0:
             self.player.angle = math.degrees(math.atan2(dy, dx))
 
+
     def on_mouse_press(self, x, y, button, modifiers):
         if button == arcade.MOUSE_BUTTON_LEFT:
             self.shoot()
@@ -578,6 +556,15 @@ class GameWindow(arcade.Window):
     def shoot(self):
         if not self.player or not self.player.alive or self.paused or self.player.reloading:
             return
+
+        # --- вычисляем направление прямо перед выстрелом ---
+        dx = self.mouse_x - self.player.center_x
+        dy = self.mouse_y - self.player.center_y
+        if dx != 0 or dy != 0:
+            self.player.angle = math.degrees(math.atan2(dy, dx))
+
+        # --- остальной код стрельбы ---
+
         # остальной код без изменений
 
         current_time = time.time()
@@ -679,19 +666,25 @@ class GameWindow(arcade.Window):
         if to_kill:
             self.message = f'MELEE KILL - {len(to_kill)} ENEMIES'
 
+
+
+
+
+
+
+
+
+
 # ---------------- Основной апдейт
     def update(self, delta_time):
         if self.paused:
-            # Обновляем только частицы и пули
             self.particle_list.update()
             self.bullet_list.update()
             return
 
-        # Если игрок мертв, не двигаем его и не даём стрелять
         if not self.player or not self.player.alive:
             self.particle_list.update()
             self.bullet_list.update()
-            # Проверяем победу на уровне (если нужно)
             if len(self.enemy_list) == 0:
                 self.level += 1
                 self.setup()
@@ -699,7 +692,7 @@ class GameWindow(arcade.Window):
 
         current_time = time.time()
 
-        # --- Обновление пуль ---
+        # --- Пули ---
         for bullet in self.bullet_list:
             bullet.update(delta_time)
             if arcade.check_for_collision_with_list(bullet, self.wall_list):
@@ -736,13 +729,15 @@ class GameWindow(arcade.Window):
             action = enemy.update_ai(self.player, self.wall_list, delta_time)
             if action == 'attack':
                 if ONE_HIT_PLAYER:
-                    self.player.kill_actor()
+                    self.player.alive = False
+                    self.player.kill()
                     self.message = 'YOU DIED - PRESS R TO RESTART'
                     return
                 else:
                     self.player.health -= 20
                     if self.player.health <= 0:
-                        self.player.kill_actor()
+                        self.player.alive = False
+                        self.player.kill()
                         self.message = 'YOU DIED - PRESS R TO RESTART'
                         return
 
@@ -754,27 +749,37 @@ class GameWindow(arcade.Window):
         if self.keys_pressed[arcade.key.D]: move_x += 1
 
         if move_x != 0 or move_y != 0:
+            # нормализация диагонали
             if move_x != 0 and move_y != 0:
                 move_x *= 0.7071
                 move_y *= 0.7071
-            move_x *= self.player.speed * delta_time
-            move_y *= self.player.speed * delta_time
 
-            old_x, old_y = self.player.center_x, self.player.center_y
-            self.player.center_x += move_x
+            # движение по X
+            old_x = self.player.center_x
+            self.player.center_x += move_x * self.player.speed * delta_time
             if arcade.check_for_collision_with_list(self.player, self.wall_list):
                 self.player.center_x = old_x
-            self.player.center_y += move_y
+
+            # движение по Y
+            old_y = self.player.center_y
+            self.player.center_y += move_y * self.player.speed * delta_time
             if arcade.check_for_collision_with_list(self.player, self.wall_list):
                 self.player.center_y = old_y
 
+            # частицы шагов
             if current_time - self.last_update_time > 0.05:
                 for _ in range(2):
                     px = Particle(1, (100, 100, 100), 0, 0, life=random.randint(15, 25))
-                    px.center_x = old_x + random.uniform(-5, 5)
-                    px.center_y = old_y + random.uniform(-5, 5)
+                    px.center_x = self.player.center_x + random.uniform(-5, 5)
+                    px.center_y = self.player.center_y + random.uniform(-5, 5)
                     self.particle_list.append(px)
                 self.last_update_time = current_time
+
+        # --- Вращение к мышке ---
+        dx = self.mouse_x - self.player.center_x
+        dy = self.mouse_y - self.player.center_y
+        if dx != 0 or dy != 0:
+            self.player.angle = math.degrees(math.atan2(dy, dx)) + 90
 
         # --- Победа на уровне ---
         if len(self.enemy_list) == 0:
@@ -797,6 +802,16 @@ class GameWindow(arcade.Window):
                 self.level += 1
                 self.setup()
 
+            def update_player_angle(self):
+                """Обновление угла игрока, чтобы смотрел на мышку."""
+                if not self.player or not self.player.alive:
+                    return
+                dx = self.mouse_x - self.player.center_x
+                dy = self.mouse_y - self.player.center_y
+                if dx == 0 and dy == 0:
+                    return
+                # Спрайт "смотрит вверх", поэтому +90
+                self.player.angle = math.degrees(math.atan2(dy, dx))
 
 def spawn_blood(particle_list, x, y):
     for _ in range(12):
