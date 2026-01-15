@@ -201,6 +201,7 @@ class Enemy(arcade.Sprite):
                 if dist > 0:
                     move_x = dx / dist * self.speed * delta_time
                     move_y = dy / dist * self.speed * delta_time
+                    self.angle = math.degrees(math.atan2(dy, dx)) + 90
 
                     # Сохраняем старую позицию
                     old_x = self.center_x
@@ -240,6 +241,7 @@ class Enemy(arcade.Sprite):
                 # Двигаемся к цели патрулирования
                 move_x = pdx / pdist * (self.speed * 0.6) * delta_time
                 move_y = pdy / pdist * (self.speed * 0.6) * delta_time
+                self.angle = math.degrees(math.atan2(pdy, pdx)) + 90
 
                 # Сохраняем старую позицию
                 old_x = self.center_x
