@@ -146,11 +146,13 @@ class Player(arcade.Sprite):
 
 
 
-class Enemy(Actor):
+class Enemy(arcade.Sprite):
     def __init__(self, x, y):
-        super().__init__(ENEMY_SIZE, (235, 80, 80))
+        super().__init__("assets/thug_2.png", scale=0.6)
         self.center_x = x
         self.center_y = y
+        self.width = 40  # примерно визуальный размер
+        self.height = 40
         self.state = 'patrol'
         self.patrol_target = None
         self.vision_radius = 350
@@ -162,6 +164,12 @@ class Enemy(Actor):
         self.speed = ENEMY_SPEED
         self.last_state_change = 0
         self.stun_timer = 0
+        self.alive = True
+
+
+    def kill_actor(self):
+        self.alive = False
+        self.kill()
 
     def update_ai(self, player, wall_list, delta_time):
         if not self.alive:
