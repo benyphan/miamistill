@@ -151,8 +151,8 @@ class Enemy(arcade.Sprite):
         super().__init__("assets/thug_2.png", scale=0.6)
         self.center_x = x
         self.center_y = y
-        self.width = 40  # примерно визуальный размер
-        self.height = 40
+        self.width = 34 # примерно визуальный размер
+        self.height = 34
         self.state = 'patrol'
         self.patrol_target = None
         self.vision_radius = 350
@@ -165,13 +165,21 @@ class Enemy(arcade.Sprite):
         self.last_state_change = 0
         self.stun_timer = 0
         self.alive = True
-
+        self.stuck_timer = 0
 
     def kill_actor(self):
         self.alive = False
         self.kill()
 
     def update_ai(self, player, wall_list, delta_time):
+
+
+        if self.stuck_timer > 0.4:
+            # тупо сменить направление
+            self.patrol_target = None
+            self.state = 'patrol'
+            return None
+
         if not self.alive:
             return None
 
@@ -201,19 +209,24 @@ class Enemy(arcade.Sprite):
                 if dist > 0:
                     move_x = dx / dist * self.speed * delta_time
                     move_y = dy / dist * self.speed * delta_time
+                    self.angle = math.degrees(math.atan2(dy, dx))
 
                     # Сохраняем старую позицию
                     old_x = self.center_x
                     old_y = self.center_y
 
                     # Двигаемся
+                    old_x = self.center_x
                     self.center_x += move_x
-                    self.center_y += move_y
-
-                    # Проверяем столкновения со стенами
                     if arcade.check_for_collision_with_list(self, wall_list):
                         self.center_x = old_x
+
+                    old_y = self.center_y
+                    self.center_y += move_y
+                    if arcade.check_for_collision_with_list(self, wall_list):
                         self.center_y = old_y
+                    else:
+                        self.angle = math.degrees(math.atan2(dy, dx)) + 90
 
             # Если достаточно близко для атаки
             if dist <= self.attack_radius and time.time() - self.last_attack_time > self.attack_cooldown:
@@ -240,19 +253,25 @@ class Enemy(arcade.Sprite):
                 # Двигаемся к цели патрулирования
                 move_x = pdx / pdist * (self.speed * 0.6) * delta_time
                 move_y = pdy / pdist * (self.speed * 0.6) * delta_time
+                self.angle = math.degrees(math.atan2(pdy, pdx))
 
                 # Сохраняем старую позицию
                 old_x = self.center_x
                 old_y = self.center_y
 
                 # Двигаемся
+                old_x = self.center_x
                 self.center_x += move_x
-                self.center_y += move_y
-
-                # Проверяем столкновения
                 if arcade.check_for_collision_with_list(self, wall_list):
                     self.center_x = old_x
+
+                old_y = self.center_y
+                self.center_y += move_y
+                if arcade.check_for_collision_with_list(self, wall_list):
                     self.center_y = old_y
+                else:
+                    self.angle = math.degrees(math.atan2(dy, dx)) + 90
+
                     self.patrol_target = None  # Выбираем новую цель
 
         return None
@@ -274,6 +293,8 @@ class GameWindow(arcade.Window):
         self.wall_list = arcade.SpriteList(use_spatial_hash=True)
         self.bullet_list = arcade.SpriteList()
         self.particle_list = arcade.SpriteList()
+        self.floor_list = arcade.SpriteList(use_spatial_hash=True)
+        self.decor_list = arcade.SpriteList(use_spatial_hash=True)
 
         self.keys_pressed = {
             arcade.key.W: False,
@@ -317,6 +338,31 @@ class GameWindow(arcade.Window):
         if self.flash_timer > 0:
             self.flash_timer -= delta_time
 
+    def spawn_decorations(self, decor_textures, count=10):
+        """Добавляет случайные декорации на карту без пересечений."""
+        tries = 0
+        placed = 0
+        max_tries = count * 20  # чтобы не застрять в бесконечном цикле
+
+        while placed < count and tries < max_tries:
+            tries += 1
+
+            x = random.randint(1, MAP_W - 2) * TILE + TILE / 2
+            y = random.randint(1, MAP_H - 2) * TILE + TILE / 2
+
+            decor = arcade.Sprite(random.choice(decor_textures), scale=0.6)
+            decor.center_x = x
+            decor.center_y = y
+
+            # Проверяем пересечения
+            collision = arcade.check_for_collision_with_list(decor, self.wall_list) or \
+                        arcade.check_for_collision_with_list(decor, self.player_list) or \
+                        arcade.check_for_collision_with_list(decor, self.enemy_list) or \
+                        arcade.check_for_collision_with_list(decor, self.decor_list)
+            if not collision:
+                self.decor_list.append(decor)
+                placed += 1
+
     def make_map(self):
         grid = [[0 for _ in range(MAP_W)] for __ in range(MAP_H)]
         # Границы
@@ -346,6 +392,16 @@ class GameWindow(arcade.Window):
 
         return grid
 
+    def is_open_space(grid, x, y, radius=1):
+        """Проверяет, что вокруг тайла есть хотя бы одно свободное место (0) в квадрате radius*radius"""
+        for dy in range(-radius, radius + 1):
+            for dx in range(-radius, radius + 1):
+                nx, ny = x + dx, y + dy
+                if 0 <= nx < MAP_W and 0 <= ny < MAP_H:
+                    if grid[ny][nx] == 0:
+                        return True
+        return False
+
     def setup(self):
         # --- очистка ---
         self.player_list.clear()
@@ -362,8 +418,23 @@ class GameWindow(arcade.Window):
                 if grid[y][x] == 1:
                     wx = x * TILE + TILE / 2
                     wy = y * TILE + TILE / 2
-                    wall = Wall(TILE, TILE, WALL_COLOR, wx, wy)
+                    wall = arcade.Sprite("assets/wall.png", scale=1.0)
+                    wall.center_x = wx
+                    wall.center_y = wy
+                    wall.width = TILE
+                    wall.height = TILE
                     self.wall_list.append(wall)
+
+        for y in range(MAP_H):
+            for x in range(MAP_W):
+                fx = x * TILE + TILE / 2
+                fy = y * TILE + TILE / 2
+                floor = arcade.Sprite("assets/floor.png", scale=1.0)
+                floor.center_x = fx
+                floor.center_y = fy
+                floor.width = TILE
+                floor.height = TILE
+                self.floor_list.append(floor)
 
         # --- СПАВН ИГРОКА (ТОЛЬКО ЕСЛИ НЕТ КОЛЛИЗИЙ) ---
         self.player = None
@@ -379,8 +450,10 @@ class GameWindow(arcade.Window):
                         if grid[y][x] == 0:
                             px = x * TILE + TILE / 2
                             py = y * TILE + TILE / 2
-
                             temp_player = Player(px, py)
+                            if not arcade.check_for_collision_with_list(temp_player, self.wall_list):
+                                self.player = temp_player
+                                break
 
                             if not arcade.check_for_collision_with_list(temp_player, self.wall_list):
                                 self.player = temp_player
@@ -406,18 +479,16 @@ class GameWindow(arcade.Window):
                 if grid[y][x] == 0:
                     ex = x * TILE + TILE / 2
                     ey = y * TILE + TILE / 2
-
                     dist = math.hypot(
                         ex - self.player.center_x,
                         ey - self.player.center_y
                     )
-
                     if dist > 200:
                         enemy = Enemy(ex, ey)
-
                         if not arcade.check_for_collision_with_list(enemy, self.wall_list):
                             self.enemy_list.append(enemy)
                             break
+
                 tries += 1
 
         self.message = f"LEVEL {self.level} - KILL ALL ENEMIES"
@@ -425,6 +496,12 @@ class GameWindow(arcade.Window):
 
     def on_draw(self):
         self.clear((18, 10, 30))  # тёмно-фиолетовый
+        self.floor_list.draw()  # Рисуем пол
+        self.wall_list.draw()  # Рисуем стены поверх пола
+        self.player_list.draw()  # Персонажи
+        self.enemy_list.draw()
+        self.bullet_list.draw()
+        self.particle_list.draw()
 
         # камера-тряска
         sx = random.randint(-self.shake, self.shake)
@@ -494,6 +571,7 @@ class GameWindow(arcade.Window):
         self.hud_controls.x = 20 + hud_x
         self.hud_controls.y = 20 + hud_y
         self.hud_controls.draw()
+
 
         # --- Пауза ---
         if self.paused:
