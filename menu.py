@@ -4,6 +4,8 @@ from main import GameWindow  # в main.py должен быть GameView(arcade.
 SCREEN_TITLE = "Miami Still"
 
 
+
+#ss
 class MenuView(arcade.View):
     def __init__(self):
         super().__init__()
