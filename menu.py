@@ -1,7 +1,7 @@
 import arcade
 from main import GameWindow  # в main.py должен быть GameView(arcade.View)
 
-SCREEN_TITLE = "Hotline Miami"
+SCREEN_TITLE = "Miami Still"
 
 
 class MenuView(arcade.View):
@@ -18,7 +18,7 @@ class MenuView(arcade.View):
         w, h = self.window.get_size()
 
         arcade.draw_text(
-            "HOTLINE MIAMI",
+            "MIAMI STILL",
             w // 2,
             h - 160,
             arcade.color.ORANGE,
