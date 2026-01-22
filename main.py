@@ -253,7 +253,7 @@ class Enemy(arcade.Sprite):
                 # Двигаемся к цели патрулирования
                 move_x = pdx / pdist * (self.speed * 0.6) * delta_time
                 move_y = pdy / pdist * (self.speed * 0.6) * delta_time
-                self.angle = math.degrees(math.atan2(pdy, pdx))
+                self.angle = math.degrees(math.atan2(-dy, dx)) + 90
 
                 # Сохраняем старую позицию
                 old_x = self.center_x
@@ -270,7 +270,7 @@ class Enemy(arcade.Sprite):
                 if arcade.check_for_collision_with_list(self, wall_list):
                     self.center_y = old_y
                 else:
-                    self.angle = math.degrees(math.atan2(dy, dx)) + 90
+                    self.angle = math.degrees(math.atan2(-dy, dx)) + 90
 
                     self.patrol_target = None  # Выбираем новую цель
 
@@ -281,12 +281,42 @@ class Enemy(arcade.Sprite):
 
 class GameWindow(arcade.Window):
     def __init__(self):
-        super().__init__(SCREEN_WIDTH, SCREEN_HEIGHT, SCREEN_TITLE)
+        # создаём полноэкранное окно
+        super().__init__(width=800, height=600, title=SCREEN_TITLE, fullscreen=True)
         arcade.set_background_color((15, 15, 15))
+
+        # Получаем реальные размеры экрана
+        self.SCREEN_WIDTH, self.SCREEN_HEIGHT = self.get_size()
+
+        # масштаб тайлов под новый размер, если нужно
+        global TILE, MAP_W, MAP_H
+        TILE = 48  # можно оставить, или увеличить пропорционально экрану
+        MAP_W = self.SCREEN_WIDTH // TILE
+        MAP_H = self.SCREEN_HEIGHT // TILE
+
+        # HUD-тексты создаём с учётом новых размеров
+        self.hud_message = arcade.Text("", 20, self.SCREEN_HEIGHT - 40, arcade.color.WHITE, 16, font_name="Kenney Future")
+        self.hud_enemies = arcade.Text("", 20, self.SCREEN_HEIGHT - 70, arcade.color.RED, 14, font_name="Kenney Future")
+        self.hud_weapon = arcade.Text("", 20, self.SCREEN_HEIGHT - 100, arcade.color.WHITE, 14, font_name="Kenney Future")
+        self.hud_health = arcade.Text("", 20, self.SCREEN_HEIGHT - 130, arcade.color.GREEN, 14, font_name="Kenney Future")
+        self.hud_controls = arcade.Text(
+            "WASD: MOVE  MOUSE: AIM  LMB: SHOOT  SPACE: MELEE  1/2: WEAPON  R: RESTART",
+            20, 20, arcade.color.LIGHT_GRAY, 12, font_name="Kenney Future"
+        )
+
+        self.paused_text = arcade.Text("PAUSED", self.SCREEN_WIDTH // 2, self.SCREEN_HEIGHT // 2,
+                                       arcade.color.YELLOW, 36, anchor_x="center", anchor_y="center",
+                                       font_name="Kenney Future")
+        self.dead_title = arcade.Text("YOU DIED", self.SCREEN_WIDTH // 2, self.SCREEN_HEIGHT // 2 + 30,
+                                      arcade.color.RED, 36, anchor_x="center", font_name="Kenney Future")
+        self.dead_sub = arcade.Text("PRESS R TO RESTART", self.SCREEN_WIDTH // 2, self.SCREEN_HEIGHT // 2 - 30,
+                                    arcade.color.WHITE, 24, anchor_x="center", font_name="Kenney Future")
+
+        # остальной init код без изменений
         self.flash_timer = 0
         self.shake = 0
         self.blood_splats = []
-
+        self.neon_offset = 0
         self.player: Player = None
         self.player_list = arcade.SpriteList()
         self.enemy_list = arcade.SpriteList()
@@ -295,6 +325,7 @@ class GameWindow(arcade.Window):
         self.particle_list = arcade.SpriteList()
         self.floor_list = arcade.SpriteList(use_spatial_hash=True)
         self.decor_list = arcade.SpriteList(use_spatial_hash=True)
+        self.corpse_list = arcade.SpriteList()
 
         self.keys_pressed = {
             arcade.key.W: False,
@@ -309,28 +340,6 @@ class GameWindow(arcade.Window):
         self.message = ''
         self.paused = False
         self.last_update_time = time.time()
-        # --- HUD Text objects (создаём один раз) ---
-        self.hud_message = arcade.Text("", 20, SCREEN_HEIGHT - 40, arcade.color.WHITE, 16, font_name="Kenney Future")
-        self.hud_enemies = arcade.Text("", 20, SCREEN_HEIGHT - 70, arcade.color.RED, 14, font_name="Kenney Future")
-        self.hud_weapon = arcade.Text("", 20, SCREEN_HEIGHT - 100, arcade.color.WHITE, 14, font_name="Kenney Future")
-        self.hud_health = arcade.Text("", 20, SCREEN_HEIGHT - 130, arcade.color.GREEN, 14, font_name="Kenney Future")
-        self.hud_controls = arcade.Text(
-            "WASD: MOVE  MOUSE: AIM  LMB: SHOOT  SPACE: MELEE  1/2: WEAPON  R: RESTART",
-            20, 20, arcade.color.LIGHT_GRAY, 12, font_name="Kenney Future"
-        )
-
-        # Центрированные тексты для паузы и смерти
-        self.paused_text = arcade.Text("PAUSED", SCREEN_WIDTH // 2, SCREEN_HEIGHT // 2,
-                                       arcade.color.YELLOW, 36, anchor_x="center", anchor_y="center",
-                                       font_name="Kenney Future")
-        self.dead_title = arcade.Text("YOU DIED", SCREEN_WIDTH // 2, SCREEN_HEIGHT // 2 + 30,
-                                      arcade.color.RED, 36, anchor_x="center", font_name="Kenney Future")
-        self.dead_sub = arcade.Text("PRESS R TO RESTART", SCREEN_WIDTH // 2, SCREEN_HEIGHT // 2 - 30,
-                                    arcade.color.WHITE, 24, anchor_x="center", font_name="Kenney Future")
-        self.last_update_time = time.time()
-
-        self.shake = 0  # тряска экрана
-        self.flash_timer = 0  # вспышка при выстреле
 
         self.setup()
     def on_update(self, delta_time: float):
@@ -409,6 +418,7 @@ class GameWindow(arcade.Window):
         self.wall_list.clear()
         self.bullet_list.clear()
         self.particle_list.clear()
+        self.corpse_list.clear()
 
         # --- карта ---
         grid = self.make_map()
@@ -418,7 +428,7 @@ class GameWindow(arcade.Window):
                 if grid[y][x] == 1:
                     wx = x * TILE + TILE / 2
                     wy = y * TILE + TILE / 2
-                    wall = arcade.Sprite("assets/wall.png", scale=1.0)
+                    wall = arcade.Sprite("assets/wall.png", scale=0.1)
                     wall.center_x = wx
                     wall.center_y = wy
                     wall.width = TILE
@@ -545,6 +555,7 @@ class GameWindow(arcade.Window):
         self.hud_enemies.x = 20 + hud_x
         self.hud_enemies.y = SCREEN_HEIGHT - 70 + hud_y
         self.hud_enemies.draw()
+        self.corpse_list.draw()
 
         w = self.player.weapon.upper()
         ammo = self.player.ammo.get(self.player.weapon, 0)
@@ -629,10 +640,7 @@ class GameWindow(arcade.Window):
             return
         self.mouse_x = x
         self.mouse_y = y
-        dx = x - self.player.center_x
-        dy = y - self.player.center_y
-        if dx != 0 or dy != 0:
-            self.player.angle = math.degrees(math.atan2(dy, dx))
+
 
 
     def on_mouse_press(self, x, y, button, modifiers):
@@ -646,8 +654,6 @@ class GameWindow(arcade.Window):
         # --- вычисляем направление прямо перед выстрелом ---
         dx = self.mouse_x - self.player.center_x
         dy = self.mouse_y - self.player.center_y
-        if dx != 0 or dy != 0:
-            self.player.angle = math.degrees(math.atan2(dy, dx))
 
         # --- остальной код стрельбы ---
 
@@ -752,16 +758,19 @@ class GameWindow(arcade.Window):
         if to_kill:
             self.message = f'MELEE KILL - {len(to_kill)} ENEMIES'
 
+    def kill_enemy(self, enemy):
+        corpse = arcade.Sprite(
+            "assets/bloods.png",  # СПРАЙТ ЛЕЖАЩЕГО ЧУВАКА
+            scale=enemy.scale
+        )
+        corpse.center_x = enemy.center_x
+        corpse.center_y = enemy.center_y
+        corpse.angle = enemy.angle
 
+        self.corpse_list.append(corpse)
+        enemy.remove_from_sprite_lists()
 
-
-
-
-
-
-
-
-# ---------------- Основной апдейт
+    # ---------------- Основной апдейт
     def update(self, delta_time):
         if self.paused:
             self.particle_list.update()
@@ -797,6 +806,7 @@ class GameWindow(arcade.Window):
             if enemies_hit:
                 for enemy in enemies_hit:
                     spawn_blood(self.particle_list, enemy.center_x, enemy.center_y)
+                    self.kill_enemy(enemy)
                     enemy.kill_actor()
                 bullet.kill()
                 continue
@@ -865,7 +875,7 @@ class GameWindow(arcade.Window):
         dx = self.mouse_x - self.player.center_x
         dy = self.mouse_y - self.player.center_y
         if dx != 0 or dy != 0:
-            self.player.angle = math.degrees(math.atan2(dy, dx)) + 90
+            self.player.angle = math.degrees(math.atan2(-dy, dx)) + 90
 
         # --- Победа на уровне ---
         if len(self.enemy_list) == 0:
@@ -888,16 +898,6 @@ class GameWindow(arcade.Window):
                 self.level += 1
                 self.setup()
 
-            def update_player_angle(self):
-                """Обновление угла игрока, чтобы смотрел на мышку."""
-                if not self.player or not self.player.alive:
-                    return
-                dx = self.mouse_x - self.player.center_x
-                dy = self.mouse_y - self.player.center_y
-                if dx == 0 and dy == 0:
-                    return
-                # Спрайт "смотрит вверх", поэтому +90
-                self.player.angle = math.degrees(math.atan2(dy, dx))
 
 def spawn_blood(particle_list, x, y):
     for _ in range(12):
