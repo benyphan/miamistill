@@ -594,7 +594,6 @@ class GameWindow(arcade.View):
         self.bullet_list.draw()
         self.particle_list.draw()
 
-        # камера-тряска
         sx = random.randint(-self.shake, self.shake)
         sy = random.randint(-self.shake, self.shake)
         self.shake = max(0, self.shake - 1)
