@@ -279,29 +279,27 @@ class Enemy(arcade.Sprite):
 
 # ---------------- Game
 
-class GameWindow(arcade.Window):
+class GameWindow(arcade.View):
     def __init__(self):
         # создаём полноэкранное окно
-        super().__init__(width=800, height=600, title=SCREEN_TITLE, fullscreen=True)
+        super().__init__()
         arcade.set_background_color((15, 15, 15))
+        self.SCREEN_WIDTH, self.SCREEN_HEIGHT = self.window.get_size()
 
-        # Получаем реальные размеры экрана
-        self.SCREEN_WIDTH, self.SCREEN_HEIGHT = self.get_size()
-
-        # масштаб тайлов под новый размер, если нужно
+        # Пересчёт тайлов под новый размер
         global TILE, MAP_W, MAP_H
-        TILE = 48  # можно оставить, или увеличить пропорционально экрану
+        TILE = 48  # можно оставить или масштабировать
         MAP_W = self.SCREEN_WIDTH // TILE
         MAP_H = self.SCREEN_HEIGHT // TILE
 
-        # HUD-тексты создаём с учётом новых размеров
-        self.hud_message = arcade.Text("", 20, self.SCREEN_HEIGHT - 40, arcade.color.WHITE, 16, font_name="Kenney Future")
-        self.hud_enemies = arcade.Text("", 20, self.SCREEN_HEIGHT - 70, arcade.color.RED, 14, font_name="Kenney Future")
-        self.hud_weapon = arcade.Text("", 20, self.SCREEN_HEIGHT - 100, arcade.color.WHITE, 14, font_name="Kenney Future")
-        self.hud_health = arcade.Text("", 20, self.SCREEN_HEIGHT - 130, arcade.color.GREEN, 14, font_name="Kenney Future")
+        # HUD, камеры, спрайты и всё остальное — оставляем как есть
+        self.hud_message = arcade.Text("", 20, self.SCREEN_HEIGHT - 40, arcade.color.WHITE, 16)
+        self.hud_enemies = arcade.Text("", 20, self.SCREEN_HEIGHT - 70, arcade.color.RED, 14)
+        self.hud_weapon = arcade.Text("", 20, self.SCREEN_HEIGHT - 100, arcade.color.WHITE, 14)
+        self.hud_health = arcade.Text("", 20, self.SCREEN_HEIGHT - 130, arcade.color.GREEN, 14)
         self.hud_controls = arcade.Text(
             "WASD: MOVE  MOUSE: AIM  LMB: SHOOT  SPACE: MELEE  1/2: WEAPON  R: RESTART",
-            20, 20, arcade.color.LIGHT_GRAY, 12, font_name="Kenney Future"
+            20, 20, arcade.color.LIGHT_GRAY, 12
         )
 
         self.paused_text = arcade.Text("PAUSED", self.SCREEN_WIDTH // 2, self.SCREEN_HEIGHT // 2,
@@ -346,6 +344,9 @@ class GameWindow(arcade.Window):
         self.update(delta_time)  # вызываем твой update каждый кадр
         if self.flash_timer > 0:
             self.flash_timer -= delta_time
+
+    def on_show_view(self):
+        self.SCREEN_WIDTH, self.SCREEN_HEIGHT = self.window.get_size()
 
     def spawn_decorations(self, decor_textures, count=10):
         """Добавляет случайные декорации на карту без пересечений."""
@@ -504,6 +505,8 @@ class GameWindow(arcade.Window):
         self.message = f"LEVEL {self.level} - KILL ALL ENEMIES"
         self.last_update_time = time.time()
 
+
+
     def on_draw(self):
         self.clear((18, 10, 30))  # тёмно-фиолетовый
         self.floor_list.draw()  # Рисуем пол
@@ -615,6 +618,10 @@ class GameWindow(arcade.Window):
             )
 
     def on_key_press(self, key, modifiers):
+        if key == arcade.key.ESCAPE:
+            from menu import MenuView
+            self.window.show_view(MenuView())
+            return
         if key in self.keys_pressed:
             self.keys_pressed[key] = True
         elif key == arcade.key.SPACE:
