@@ -4,6 +4,8 @@ from main import GameWindow  # в main.py должен быть GameView(arcade.
 SCREEN_TITLE = "Miami Gun"
 
 
+
+#ss
 class MenuView(arcade.View):
     def __init__(self):
         super().__init__()
@@ -18,7 +20,7 @@ class MenuView(arcade.View):
         w, h = self.window.get_size()
 
         arcade.draw_text(
-            "Miami Gun",
+            "MIAMI GUN",
             w // 2,
             h - 160,
             arcade.color.ORANGE,

@@ -155,124 +155,201 @@ class Enemy(arcade.Sprite):
         self.height = 34
         self.state = 'patrol'
         self.patrol_target = None
-        self.vision_radius = 350
-        self.attack_radius = 60
+        self.vision_radius = 550  # было 350
+        self.attack_radius = 60  # было 60
+
+
         self.vx = 0
         self.vy = 0
         self.last_attack_time = 0
         self.attack_cooldown = 1.0
         self.speed = ENEMY_SPEED
+        self.chase_speed_mult = 1.35
         self.last_state_change = 0
         self.stun_timer = 0
         self.alive = True
         self.stuck_timer = 0
+        self.last_seen_time = 0
+        self.last_seen_pos = None
+        self.last_seen_time = 0
+        self.last_seen_pos = None
+        self.memory_time = 12.5
+
+        # --- ПАТРУЛЬ ---
+        self.patrol_points = []
+        self.patrol_index = 0
+        self.patrol_wait_timer = 0
+        self.patrol_wait_time = random.uniform(0.3, 1.1)
+
+        self.prev_x = self.center_x
+        self.prev_y = self.center_y
+        self.stuck_time = 0.0
+
+
+        # --- ПОИСК ---
+        self.search_timer = 0
+        self.search_duration = random.uniform(1.0, 2.0)
+    def pick_patrol_points(self, wall_list, count=4, radius=260):
+        """Генерит точки патруля вокруг текущей позиции, чтобы не было хождения в стену."""
+        self.patrol_points.clear()
+        tries = 0
+
+        while len(self.patrol_points) < count and tries < 200:
+            tries += 1
+            px = self.center_x + random.uniform(-radius, radius)
+            py = self.center_y + random.uniform(-radius, radius)
+
+            # временный спрайт для проверки коллизий
+            temp = arcade.SpriteSolidColor(self.width, self.height, (0, 0, 0))
+            temp.center_x = px
+            temp.center_y = py
+
+            if not arcade.check_for_collision_with_list(temp, wall_list):
+                self.patrol_points.append((px, py))
+
+        if not self.patrol_points:
+            self.patrol_points = [(self.center_x, self.center_y)]
+        self.patrol_index = 0
+
+    def move_towards(self, tx, ty, wall_list, speed, delta_time):
+        """Двигает врага к точке с коллизиями."""
+        dx = tx - self.center_x
+        dy = ty - self.center_y
+        dist = math.hypot(dx, dy)
+        if dist == 0:
+            return True
+
+        nx = dx / dist
+        ny = dy / dist
+
+        move_x = nx * speed * delta_time
+        move_y = ny * speed * delta_time
+
+        old_x = self.center_x
+        self.center_x += move_x
+        if arcade.check_for_collision_with_list(self, wall_list):
+            self.center_x = old_x
+
+        old_y = self.center_y
+        self.center_y += move_y
+        if arcade.check_for_collision_with_list(self, wall_list):
+            self.center_y = old_y
+
+        self.angle = math.degrees(math.atan2(-dy, dx)) + 90
+
+        return dist < 14
 
     def kill_actor(self):
         self.alive = False
         self.kill()
 
     def update_ai(self, player, wall_list, delta_time):
-
-
-        if self.stuck_timer > 0.4:
-            # тупо сменить направление
-            self.patrol_target = None
-            self.state = 'patrol'
-            return None
-
         if not self.alive:
             return None
 
-        # Если враг оглушен
+        # если оглушён
         if self.stun_timer > 0:
             self.stun_timer -= delta_time
             return None
 
+        now = time.time()
+        moved = math.hypot(self.center_x - self.prev_x, self.center_y - self.prev_y)
+
+        if moved < 0.5:
+            self.stuck_time += delta_time
+        else:
+            self.stuck_time = 0.0
+
+        self.prev_x = self.center_x
+        self.prev_y = self.center_y
         dx = player.center_x - self.center_x
         dy = player.center_y - self.center_y
         dist = math.hypot(dx, dy)
 
-        # Проверка прямой видимости
-        can_see = sample_line_clear(self.center_x, self.center_y,
-                                    player.center_x, player.center_y, wall_list)
+        # видимость
+        can_see = False
+        if dist < self.vision_radius:
+            can_see = sample_line_clear(
+                self.center_x, self.center_y,
+                player.center_x, player.center_y,
+                wall_list
+            )
 
-        # Если видим игрока и он в радиусе зрения
+        # ---------------- ЕСЛИ ВИДИТ ИГРОКА ----------------
         if can_see and dist < self.vision_radius:
-            # Если еще не в режиме преследования, переключаемся
-            if self.state != 'chase':
-                self.state = 'chase'
-                self.last_state_change = time.time()
+            self.state = "chase"
+            self.last_seen_time = now
+            self.last_seen_pos = (player.center_x, player.center_y)
 
-            # Двигаемся к игроку
+            chase_speed = self.speed * self.chase_speed_mult
+
+            # идём к игроку
             if dist > self.attack_radius:
-                # Нормализуем вектор направления
-                if dist > 0:
-                    move_x = dx / dist * self.speed * delta_time
-                    move_y = dy / dist * self.speed * delta_time
-                    self.angle = math.degrees(math.atan2(dy, dx))
+                self.move_towards(player.center_x, player.center_y, wall_list, chase_speed, delta_time)
 
-                    # Сохраняем старую позицию
-                    old_x = self.center_x
-                    old_y = self.center_y
+            # атака
+            if dist <= self.attack_radius and now - self.last_attack_time > self.attack_cooldown:
+                self.last_attack_time = now
+                return "attack"
 
-                    # Двигаемся
-                    old_x = self.center_x
-                    self.center_x += move_x
-                    if arcade.check_for_collision_with_list(self, wall_list):
-                        self.center_x = old_x
+            return None
 
-                    old_y = self.center_y
-                    self.center_y += move_y
-                    if arcade.check_for_collision_with_list(self, wall_list):
-                        self.center_y = old_y
-                    else:
-                        self.angle = math.degrees(math.atan2(dy, dx)) + 90
+        # ---------------- ЕСЛИ ПОТЕРЯЛ, НО ПОМНИТ ----------------
+        if self.last_seen_pos and (now - self.last_seen_time) < self.memory_time:
+            self.state = "search"
 
-            # Если достаточно близко для атаки
-            if dist <= self.attack_radius and time.time() - self.last_attack_time > self.attack_cooldown:
-                self.last_attack_time = time.time()
-                return 'attack'
+            tx, ty = self.last_seen_pos
+            arrived = self.move_towards(tx, ty, wall_list, self.speed * 1.15, delta_time)
 
-        else:
-            # Если не видим игрока, патрулируем
-            if self.state != 'patrol' or self.patrol_target is None:
-                self.state = 'patrol'
-                self.last_state_change = time.time()
-                # Выбираем случайную точку для патрулирования
-                self.patrol_target = (self.center_x + random.uniform(-150, 150),
-                                      self.center_y + random.uniform(-150, 150))
+            # дошёл до последней позиции — начинает "искать"
+            if arrived:
+                self.search_timer += delta_time
 
-            tx, ty = self.patrol_target
-            pdx = tx - self.center_x
-            pdy = ty - self.center_y
-            pdist = math.hypot(pdx, pdy)
+                # типа "сканит" местность: крутится на месте
+                self.angle += 180 * delta_time
 
-            if pdist < 20:  # Достигли цели
-                self.patrol_target = None
-            elif pdist > 0:
-                # Двигаемся к цели патрулирования
-                move_x = pdx / pdist * (self.speed * 0.6) * delta_time
-                move_y = pdy / pdist * (self.speed * 0.6) * delta_time
-                self.angle = math.degrees(math.atan2(-dy, dx)) + 90
+                if self.search_timer >= self.search_duration:
+                    # не нашёл — забывает
+                    self.last_seen_pos = None
+                    self.search_timer = 0
 
-                # Сохраняем старую позицию
-                old_x = self.center_x
-                old_y = self.center_y
+            return None
 
-                # Двигаемся
-                old_x = self.center_x
-                self.center_x += move_x
-                if arcade.check_for_collision_with_list(self, wall_list):
-                    self.center_x = old_x
+        # ---------------- ПАТРУЛЬ ----------------
+        if self.state != "patrol":
+            self.state = "patrol"
+            self.patrol_wait_timer = 0
 
-                old_y = self.center_y
-                self.center_y += move_y
-                if arcade.check_for_collision_with_list(self, wall_list):
-                    self.center_y = old_y
-                else:
-                    self.angle = math.degrees(math.atan2(-dy, dx)) + 90
+        # если нет точек патруля — создаём
+        if not self.patrol_points:
+            self.pick_patrol_points(wall_list, count=4, radius=280)
 
-                    self.patrol_target = None  # Выбираем новую цель
+        # ожидание на точке
+        if self.patrol_wait_timer > 0:
+            self.patrol_wait_timer -= delta_time
+            return None
+
+        tx, ty = self.patrol_points[self.patrol_index]
+        arrived = self.move_towards(tx, ty, wall_list, self.speed * 0.75, delta_time)
+        if self.stuck_time > 0.7:
+            self.patrol_index = (self.patrol_index + 1) % len(self.patrol_points)
+            self.patrol_wait_timer = 0.0
+
+            # если совсем в тупике — генерим новые точки
+            if self.stuck_time > 1.4:
+                self.pick_patrol_points(wall_list, count=4, radius=320)
+
+            self.stuck_time = 0.0
+            return None
+
+        if arrived:
+            # стоим на точке чуть-чуть, потом следующая
+            self.patrol_wait_timer = self.patrol_wait_time
+            self.patrol_wait_time = random.uniform(0.3, 1.1)
+
+            self.patrol_index += 1
+            if self.patrol_index >= len(self.patrol_points):
+                self.patrol_index = 0
 
         return None
 
@@ -510,13 +587,13 @@ class GameWindow(arcade.View):
     def on_draw(self):
         self.clear((18, 10, 30))  # тёмно-фиолетовый
         self.floor_list.draw()  # Рисуем пол
-        self.wall_list.draw()  # Рисуем стены поверх пола
+        self.wall_list.draw()
+        self.corpse_list.draw()# Рисуем стены поверх пола
         self.player_list.draw()  # Персонажи
         self.enemy_list.draw()
         self.bullet_list.draw()
         self.particle_list.draw()
 
-        # камера-тряска
         sx = random.randint(-self.shake, self.shake)
         sy = random.randint(-self.shake, self.shake)
         self.shake = max(0, self.shake - 1)
@@ -558,7 +635,7 @@ class GameWindow(arcade.View):
         self.hud_enemies.x = 20 + hud_x
         self.hud_enemies.y = SCREEN_HEIGHT - 70 + hud_y
         self.hud_enemies.draw()
-        self.corpse_list.draw()
+
 
         w = self.player.weapon.upper()
         ammo = self.player.ammo.get(self.player.weapon, 0)
