@@ -167,6 +167,9 @@ class Enemy(arcade.Sprite):
         self.attack_radius = 60  # было 60
 
 
+        self.activation_delay = random.uniform(0.6, 1.2)
+        self.spawn_time = time.time()
+
         self.vx = 0
         self.vy = 0
         self.last_attack_time = 0
@@ -254,7 +257,7 @@ class Enemy(arcade.Sprite):
         self.kill()
 
     def update_ai(self, player, wall_list, delta_time):
-        if not self.alive:
+        if time.time() - self.spawn_time < self.activation_delay:
             return None
 
         # если оглушён
@@ -443,6 +446,7 @@ class GameWindow(arcade.View):
         self.last_update_time = time.time()
 
         self.setup()
+
     def on_update(self, delta_time: float):
         self.update(delta_time)  # вызываем твой update каждый кадр
         if self.flash_timer > 0:
@@ -474,6 +478,7 @@ class GameWindow(arcade.View):
             if not collision:
                 self.decor_list.append(decor)
                 placed += 1
+
 
     def make_map(self):
         grid = [[0 for _ in range(MAP_W)] for __ in range(MAP_H)]
@@ -874,7 +879,7 @@ class GameWindow(arcade.View):
 
     def kill_enemy(self, enemy):
         corpse = arcade.Sprite(
-            "assets/bloods.png",  # СПРАЙТ ЛЕЖАЩЕГО ЧУВАКА
+            "assets/bloods2.png",  # СПРАЙТ ЛЕЖАЩЕГО ЧУВАКА
             scale=enemy.scale
         )
         corpse.center_x = enemy.center_x
