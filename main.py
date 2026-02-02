@@ -61,6 +61,14 @@ def sample_line_clear(x1, y1, x2, y2, wall_list, step=8):
 
 # ---------------- Entities
 
+class Decor(arcade.Sprite):
+    def __init__(self, texture_path, x, y, scale=0.6):
+        super().__init__(texture_path, scale=scale)
+        self.center_x = x
+        self.center_y = y
+
+
+
 class Wall(arcade.SpriteSolidColor):
     def __init__(self, w, h, color, center_x, center_y):
         super().__init__(w, h, color)
@@ -227,12 +235,14 @@ class Enemy(arcade.Sprite):
 
         old_x = self.center_x
         self.center_x += move_x
-        if arcade.check_for_collision_with_list(self, wall_list):
+        if arcade.check_for_collision_with_list(self, wall_list) or \
+                arcade.check_for_collision_with_list(self, self.game.decor_list):
             self.center_x = old_x
 
         old_y = self.center_y
         self.center_y += move_y
-        if arcade.check_for_collision_with_list(self, wall_list):
+        if arcade.check_for_collision_with_list(self, wall_list) or \
+                arcade.check_for_collision_with_list(self, self.game.decor_list):
             self.center_y = old_y
 
         self.angle = math.degrees(math.atan2(-dy, dx)) + 90
@@ -363,6 +373,22 @@ class GameWindow(arcade.View):
         arcade.set_background_color((15, 15, 15))
         self.SCREEN_WIDTH, self.SCREEN_HEIGHT = self.window.get_size()
 
+        self.decor_textures = [
+            "assets/chair1.png",
+            "assets/chair2.png",
+            "assets/flower1.png",
+            "assets/flower2.png",
+            "assets/lamp1.png",
+            "assets/lamp2.png",
+            "assets/musor1.png",
+            "assets/musor2.png",
+            "assets/sofa.png",
+            "assets/table1.png",
+            "assets/table2.png",
+            "assets/table3.png",
+            "assets/table4.png",
+        ]
+
         # Пересчёт тайлов под новый размер
         global TILE, MAP_W, MAP_H
         TILE = 48  # можно оставить или масштабировать
@@ -437,9 +463,8 @@ class GameWindow(arcade.View):
             x = random.randint(1, MAP_W - 2) * TILE + TILE / 2
             y = random.randint(1, MAP_H - 2) * TILE + TILE / 2
 
-            decor = arcade.Sprite(random.choice(decor_textures), scale=0.6)
-            decor.center_x = x
-            decor.center_y = y
+            decor = Decor(random.choice(decor_textures), x, y, scale=0.6)
+
 
             # Проверяем пересечения
             collision = arcade.check_for_collision_with_list(decor, self.wall_list) or \
@@ -573,6 +598,7 @@ class GameWindow(arcade.View):
                     )
                     if dist > 200:
                         enemy = Enemy(ex, ey)
+                        enemy.game = self
                         if not arcade.check_for_collision_with_list(enemy, self.wall_list):
                             self.enemy_list.append(enemy)
                             break
@@ -581,12 +607,16 @@ class GameWindow(arcade.View):
 
         self.message = f"LEVEL {self.level} - KILL ALL ENEMIES"
         self.last_update_time = time.time()
+        # --- ДЕКОР ---
+        self.decor_list.clear()
+        self.spawn_decorations(self.decor_textures, count=8)
 
 
 
     def on_draw(self):
         self.clear((18, 10, 30))  # тёмно-фиолетовый
         self.floor_list.draw()  # Рисуем пол
+        self.decor_list.draw()  # ← МЕБЕЛЬ
         self.wall_list.draw()
         self.corpse_list.draw()# Рисуем стены поверх пола
         self.player_list.draw()  # Персонажи
@@ -895,6 +925,11 @@ class GameWindow(arcade.View):
                 bullet.kill()
                 continue
 
+            if arcade.check_for_collision_with_list(bullet, self.wall_list) or \
+                    arcade.check_for_collision_with_list(bullet, self.decor_list):
+                bullet.kill()
+                continue
+
         self.particle_list.update()
 
         # --- Перезарядка оружия ---
@@ -934,16 +969,20 @@ class GameWindow(arcade.View):
                 move_x *= 0.7071
                 move_y *= 0.7071
 
+            dx = move_x * self.player.speed * delta_time
+            dy = move_y * self.player.speed * delta_time
+
             # движение по X
             old_x = self.player.center_x
-            self.player.center_x += move_x * self.player.speed * delta_time
-            if arcade.check_for_collision_with_list(self.player, self.wall_list):
+            self.player.center_x += dx
+            if arcade.check_for_collision_with_list(self.player, self.wall_list) or \
+                    arcade.check_for_collision_with_list(self.player, self.decor_list):
                 self.player.center_x = old_x
 
-            # движение по Y
             old_y = self.player.center_y
-            self.player.center_y += move_y * self.player.speed * delta_time
-            if arcade.check_for_collision_with_list(self.player, self.wall_list):
+            self.player.center_y += dy
+            if arcade.check_for_collision_with_list(self.player, self.wall_list) or \
+                    arcade.check_for_collision_with_list(self.player, self.decor_list):
                 self.player.center_y = old_y
 
             # частицы шагов
@@ -954,6 +993,7 @@ class GameWindow(arcade.View):
                     px.center_y = self.player.center_y + random.uniform(-5, 5)
                     self.particle_list.append(px)
                 self.last_update_time = current_time
+
 
         # --- Вращение к мышке ---
         dx = self.mouse_x - self.player.center_x
