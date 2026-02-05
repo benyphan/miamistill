@@ -1,8 +1,9 @@
 import arcade
 from main import GameWindow  # в main.py должен быть GameView(arcade.View)
+from music import MusicManager
 
 SCREEN_TITLE = "Miami Gun"
-
+music = MusicManager()
 
 
 #ss
@@ -11,10 +12,11 @@ class MenuView(arcade.View):
         super().__init__()
         self.timer = 0
         self.blink = True
+        self.music = MusicManager()
 
     def on_show_view(self):
         arcade.set_background_color((20, 0, 40))
-
+        self.music.play_menu()
     def on_draw(self):
         self.clear()
         w, h = self.window.get_size()
@@ -56,6 +58,7 @@ class MenuView(arcade.View):
     def on_key_press(self, key, modifiers):
         if key == arcade.key.ENTER:
             self.window.show_view(GameWindow())
+
 
         elif key == arcade.key.ESCAPE:
             arcade.close_window()
