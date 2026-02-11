@@ -2,6 +2,7 @@ import arcade
 import random
 import math
 import time
+from audio import music
 
 SCREEN_WIDTH = 1024
 SCREEN_HEIGHT = 640
@@ -431,6 +432,21 @@ class GameWindow(arcade.View):
         self.decor_list = arcade.SpriteList(use_spatial_hash=True)
         self.corpse_list = arcade.SpriteList()
 
+        # --- КАМЕРЫ ---
+        self.world_camera = arcade.camera.Camera2D()
+        self.gui_camera = arcade.camera.Camera2D()
+
+        # Размер мира
+        self.world_width = MAP_W * TILE
+        self.world_height = MAP_H * TILE
+
+        # Плавность
+        self.camera_lerp = 0.15
+
+        # Мёртвая зона
+        self.dead_zone_w = int(self.SCREEN_WIDTH * 0.35)
+        self.dead_zone_h = int(self.SCREEN_HEIGHT * 0.45)
+
         self.keys_pressed = {
             arcade.key.W: False,
             arcade.key.S: False,
@@ -453,7 +469,12 @@ class GameWindow(arcade.View):
             self.flash_timer -= delta_time
 
     def on_show_view(self):
+        #self.window.activate()
+        #self.window.set_mouse_visible(True)
+        #self.window.set_exclusive_mouse(False)
         self.SCREEN_WIDTH, self.SCREEN_HEIGHT = self.window.get_size()
+        music.play_game()
+
 
     def spawn_decorations(self, decor_textures, count=10):
         """Добавляет случайные декорации на карту без пересечений."""
@@ -616,7 +637,9 @@ class GameWindow(arcade.View):
         self.decor_list.clear()
         self.spawn_decorations(self.decor_textures, count=8)
 
-
+        # Обновляем размеры мира
+        self.world_width = MAP_W * TILE
+        self.world_height = MAP_H * TILE
 
     def on_draw(self):
         self.clear((18, 10, 30))  # тёмно-фиолетовый
@@ -734,6 +757,11 @@ class GameWindow(arcade.View):
             from menu import MenuView
             self.window.show_view(MenuView())
             return
+            # WASD — отмечаем как нажатые
+        if key in self.keys_pressed:
+            self.keys_pressed[key] = True
+            return True
+
         if key in self.keys_pressed:
             self.keys_pressed[key] = True
         elif key == arcade.key.SPACE:
@@ -749,10 +777,12 @@ class GameWindow(arcade.View):
         elif key == arcade.key.KEY_2 or key == arcade.key.NUM_2:
             if not self.player.reloading:
                 self.player.weapon = 'shotgun'
+        print(key)
 
     def on_key_release(self, key, modifiers):
         if key in self.keys_pressed:
             self.keys_pressed[key] = False
+            return True
 
     def on_mouse_motion(self, x, y, dx, dy):
         if not self.player or not self.player.alive:
@@ -1045,5 +1075,7 @@ def spawn_blood(particle_list, x, y):
 
 
 if __name__ == '__main__':
-    window = GameWindow()
+    window = arcade.Window(SCREEN_WIDTH, SCREEN_HEIGHT, SCREEN_TITLE)
+    game = GameWindow()
+    window.show_view(game)
     arcade.run()
