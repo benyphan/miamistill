@@ -469,9 +469,9 @@ class GameWindow(arcade.View):
             self.flash_timer -= delta_time
 
     def on_show_view(self):
-        #self.window.activate()
-        #self.window.set_mouse_visible(True)
-        #self.window.set_exclusive_mouse(False)
+        self.window.activate()
+        self.window.set_mouse_visible(True)
+        self.window.set_exclusive_mouse(False)
         self.SCREEN_WIDTH, self.SCREEN_HEIGHT = self.window.get_size()
         music.play_game()
 
@@ -836,9 +836,7 @@ class GameWindow(arcade.View):
             self.bullet_list.append(bx)
             self.player.ammo['pistol'] -= 1
 
-            # Отдача
-            self.player.center_x -= nx * 3
-            self.player.center_y -= ny * 3
+
 
             # Вспышка
             for _ in range(3):
@@ -863,9 +861,6 @@ class GameWindow(arcade.View):
 
             self.player.ammo['shotgun'] -= 1
 
-            # Сильная отдача
-            self.player.center_x -= nx * 6
-            self.player.center_y -= ny * 6
 
             # Большая вспышка
             for _ in range(8):
