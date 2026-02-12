@@ -3,14 +3,16 @@ import random
 import math
 import time
 from audio import music
+from save import load_game, save_game
+
 
 SCREEN_WIDTH = 1024
 SCREEN_HEIGHT = 640
 SCREEN_TITLE = "Hotline Miami Style"
 
 TILE = 48
-MAP_W = SCREEN_WIDTH // TILE
-MAP_H = SCREEN_HEIGHT // TILE
+MAP_W = 30
+MAP_H = 20
 
 PLAYER_SPEED = 350  # Быстрое плавное движение
 BULLET_SPEED = 1000  # Очень быстрые пули
@@ -58,7 +60,6 @@ def sample_line_clear(x1, y1, x2, y2, wall_list, step=8):
         if hits:
             return False
     return True
-
 
 # ---------------- Entities
 
@@ -456,13 +457,27 @@ class GameWindow(arcade.View):
         self.mouse_x = 0
         self.mouse_y = 0
 
-        self.level = 1
+        self.total_kills = 0
+        self.level, self.total_kills = load_game()
+
         self.message = ''
         self.paused = False
         self.last_update_time = time.time()
 
         self.setup()
 
+    def is_free_cell(self, grid, x, y):
+        """Клетка свободна и не является тупиком"""
+        if grid[y][x] != 0:
+            return False
+
+        free = 0
+        if grid[y + 1][x] == 0: free += 1
+        if grid[y - 1][x] == 0: free += 1
+        if grid[y][x + 1] == 0: free += 1
+        if grid[y][x - 1] == 0: free += 1
+
+        return free >= 2
     def on_update(self, delta_time: float):
         self.update(delta_time)  # вызываем твой update каждый кадр
         if self.flash_timer > 0:
@@ -545,6 +560,8 @@ class GameWindow(arcade.View):
         self.player_list.clear()
         self.enemy_list.clear()
         self.wall_list.clear()
+        self.floor_list.clear()
+        self.decor_list.clear()
         self.bullet_list.clear()
         self.particle_list.clear()
         self.corpse_list.clear()
@@ -552,6 +569,7 @@ class GameWindow(arcade.View):
         # --- карта ---
         grid = self.make_map()
 
+        # --- стены ---
         for y in range(MAP_H):
             for x in range(MAP_W):
                 if grid[y][x] == 1:
@@ -564,6 +582,7 @@ class GameWindow(arcade.View):
                     wall.height = TILE
                     self.wall_list.append(wall)
 
+        # --- пол ---
         for y in range(MAP_H):
             for x in range(MAP_W):
                 fx = x * TILE + TILE / 2
@@ -575,7 +594,7 @@ class GameWindow(arcade.View):
                 floor.height = TILE
                 self.floor_list.append(floor)
 
-        # --- СПАВН ИГРОКА (ТОЛЬКО ЕСЛИ НЕТ КОЛЛИЗИЙ) ---
+        # --- СПАВН ИГРОКА (без тупиков) ---
         self.player = None
         center_x, center_y = MAP_W // 2, MAP_H // 2
 
@@ -586,23 +605,22 @@ class GameWindow(arcade.View):
                     y = center_y + dy
 
                     if 1 <= x < MAP_W - 1 and 1 <= y < MAP_H - 1:
-                        if grid[y][x] == 0:
+                        if self.is_free_cell(grid, x, y):
                             px = x * TILE + TILE / 2
                             py = y * TILE + TILE / 2
+
                             temp_player = Player(px, py)
-                            if not arcade.check_for_collision_with_list(temp_player, self.wall_list):
-                                self.player = temp_player
-                                break
 
                             if not arcade.check_for_collision_with_list(temp_player, self.wall_list):
                                 self.player = temp_player
                                 break
+
                 if self.player:
                     break
             if self.player:
                 break
 
-        # fallback — если карта говно
+        # fallback если карта плохая
         if not self.player:
             self.player = Player(SCREEN_WIDTH // 2, SCREEN_HEIGHT // 2)
 
@@ -615,29 +633,34 @@ class GameWindow(arcade.View):
                 x = random.randint(1, MAP_W - 2)
                 y = random.randint(1, MAP_H - 2)
 
-                if grid[y][x] == 0:
+                if self.is_free_cell(grid, x, y):
                     ex = x * TILE + TILE / 2
                     ey = y * TILE + TILE / 2
+
+                    # не рядом с игроком
                     dist = math.hypot(
                         ex - self.player.center_x,
                         ey - self.player.center_y
                     )
+
                     if dist > 200:
                         enemy = Enemy(ex, ey)
                         enemy.game = self
+
                         if not arcade.check_for_collision_with_list(enemy, self.wall_list):
                             self.enemy_list.append(enemy)
                             break
 
                 tries += 1
 
-        self.message = f"LEVEL {self.level} - KILL ALL ENEMIES"
-        self.last_update_time = time.time()
-        # --- ДЕКОР ---
-        self.decor_list.clear()
+        # --- декор ---
         self.spawn_decorations(self.decor_textures, count=8)
 
-        # Обновляем размеры мира
+        # --- текст уровня ---
+        self.message = f"LEVEL {self.level} - KILL ALL ENEMIES"
+        self.last_update_time = time.time()
+
+        # --- размеры мира ---
         self.world_width = MAP_W * TILE
         self.world_height = MAP_H * TILE
 
@@ -755,6 +778,10 @@ class GameWindow(arcade.View):
     def on_key_press(self, key, modifiers):
         if key == arcade.key.ESCAPE:
             from menu import MenuView
+            from save import save_game
+
+            # сохраняем текущий прогресс
+            save_game(self.level, self.total_kills)
             self.window.show_view(MenuView())
             return
             # WASD — отмечаем как нажатые
@@ -903,6 +930,7 @@ class GameWindow(arcade.View):
             self.message = f'MELEE KILL - {len(to_kill)} ENEMIES'
 
     def kill_enemy(self, enemy):
+        self.total_kills += 1
         corpse = arcade.Sprite(
             "assets/bloods2.png",  # СПРАЙТ ЛЕЖАЩЕГО ЧУВАКА
             scale=enemy.scale
@@ -1050,6 +1078,8 @@ class GameWindow(arcade.View):
             elif current_time - self.level_cleared_time > 1.5:
                 self.level_cleared = False
                 self.level += 1
+                # Сохраняем прогресс
+                save_game(self.level, self.total_kills)
                 self.setup()
 
 
