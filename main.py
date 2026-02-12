@@ -463,6 +463,9 @@ class GameWindow(arcade.View):
         self.message = ''
         self.paused = False
         self.last_update_time = time.time()
+        #вспышки темные
+        self.dark_time = 0
+        self.dark_alpha = 0
 
         self.setup()
 
@@ -482,6 +485,11 @@ class GameWindow(arcade.View):
         self.update(delta_time)  # вызываем твой update каждый кадр
         if self.flash_timer > 0:
             self.flash_timer -= delta_time
+
+        self.dark_time += delta_time
+
+        # Быстрое мигание
+        self.dark_alpha = int((math.sin(self.dark_time * 2) + 1) * 0.5 * 180)
 
     def on_show_view(self):
         self.window.activate()
@@ -774,6 +782,15 @@ class GameWindow(arcade.View):
                 SCREEN_HEIGHT,
                 (255, 255, 255, 90)
             )
+        # Затемнение экрана
+        arcade.draw_lrbt_rectangle_filled(
+            0,
+            self.window.width,
+            0,
+            self.window.height,
+            (0, 0, 0, self.dark_alpha)
+        )
+
 
     def on_key_press(self, key, modifiers):
         if key == arcade.key.ESCAPE:
@@ -804,12 +821,13 @@ class GameWindow(arcade.View):
         elif key == arcade.key.KEY_2 or key == arcade.key.NUM_2:
             if not self.player.reloading:
                 self.player.weapon = 'shotgun'
-        print(key)
+
 
     def on_key_release(self, key, modifiers):
         if key in self.keys_pressed:
             self.keys_pressed[key] = False
             return True
+        pass
 
     def on_mouse_motion(self, x, y, dx, dy):
         if not self.player or not self.player.alive:
