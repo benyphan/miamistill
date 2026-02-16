@@ -1,4 +1,4 @@
-import sys
+mport sys
 import subprocess
 from menu import MainMenu
 
