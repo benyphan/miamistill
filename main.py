@@ -4,7 +4,7 @@ import math
 import time
 from audio import music
 from save import load_game, save_game
-
+from resources import resource_path
 
 SCREEN_WIDTH = 1024
 SCREEN_HEIGHT = 640
@@ -131,7 +131,7 @@ class Actor(arcade.Sprite):
 
 class Player(arcade.Sprite):
     def __init__(self, x, y):
-        super().__init__("assets/player.png", scale=0.6)
+        super().__init__(resource_path("assets/player.png"), scale=0.6)
         self.center_x = x
         self.center_y = y
         self.alive = True
@@ -158,7 +158,7 @@ class Player(arcade.Sprite):
 
 class Enemy(arcade.Sprite):
     def __init__(self, x, y):
-        super().__init__("assets/thug_2.png", scale=0.6)
+        super().__init__(resource_path("assets/thug_2.png"), scale=0.6)
         self.center_x = x
         self.center_y = y
         self.width = 34 # примерно визуальный размер
@@ -379,19 +379,19 @@ class GameWindow(arcade.View):
         self.SCREEN_WIDTH, self.SCREEN_HEIGHT = self.window.get_size()
 
         self.decor_textures = [
-            "assets/chair1.png",
-            "assets/chair2.png",
-            "assets/flower1.png",
-            "assets/flower2.png",
-            "assets/lamp1.png",
-            "assets/lamp2.png",
-            "assets/musor1.png",
-            "assets/musor2.png",
-            "assets/sofa.png",
-            "assets/table1.png",
-            "assets/table2.png",
-            "assets/table3.png",
-            "assets/table4.png",
+            resource_path("assets/chair1.png"),
+            resource_path("assets/chair2.png"),
+            resource_path("assets/flower1.png"),
+            resource_path("assets/flower2.png"),
+            resource_path("assets/lamp1.png"),
+            resource_path("assets/lamp2.png"),
+            resource_path("assets/musor1.png"),
+            resource_path("assets/musor2.png"),
+            resource_path("assets/sofa.png"),
+            resource_path("assets/table1.png"),
+            resource_path("assets/table2.png"),
+            resource_path("assets/table3.png"),
+            resource_path("assets/table4.png"),
         ]
 
         # Пересчёт тайлов под новый размер
@@ -583,7 +583,7 @@ class GameWindow(arcade.View):
                 if grid[y][x] == 1:
                     wx = x * TILE + TILE / 2
                     wy = y * TILE + TILE / 2
-                    wall = arcade.Sprite("assets/wall.png", scale=0.1)
+                    wall = arcade.Sprite(resource_path("assets/wall.png"), scale=0.1)
                     wall.center_x = wx
                     wall.center_y = wy
                     wall.width = TILE
@@ -595,7 +595,7 @@ class GameWindow(arcade.View):
             for x in range(MAP_W):
                 fx = x * TILE + TILE / 2
                 fy = y * TILE + TILE / 2
-                floor = arcade.Sprite("assets/floor.png", scale=1.0)
+                floor = arcade.Sprite(resource_path("assets/floor.png"), scale=1.0)
                 floor.center_x = fx
                 floor.center_y = fy
                 floor.width = TILE
@@ -950,7 +950,7 @@ class GameWindow(arcade.View):
     def kill_enemy(self, enemy):
         self.total_kills += 1
         corpse = arcade.Sprite(
-            "assets/bloods2.png",  # СПРАЙТ ЛЕЖАЩЕГО ЧУВАКА
+            resource_path("assets/bloods2.png"),  # СПРАЙТ ЛЕЖАЩЕГО ЧУВАКА
             scale=enemy.scale
         )
         corpse.center_x = enemy.center_x

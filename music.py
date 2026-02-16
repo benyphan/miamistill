@@ -1,11 +1,11 @@
 import arcade
-
+from resources import resource_path
 
 class MusicManager:
     def __init__(self):
         # Загружаем музыку один раз
-        self.menu_music = arcade.load_sound("music/menu.ogg")
-        self.game_music = arcade.load_sound("music/game.ogg")
+        self.menu_music = arcade.load_sound(resource_path("music/menu.ogg"))
+        self.game_music = arcade.load_sound(resource_path("music/game.ogg"))
 
         self.player = None
         self.current = None  # "menu" или "game"
